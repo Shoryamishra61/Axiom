@@ -112,12 +112,20 @@ async def run_seed():
             db.add(hb)
 
             # 6. Seed Jobs
-            job_done = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.completed, payload={"to": "user@example.com"}, run_at=datetime.datetime.now(datetime.timezone.utc))
-            job_run = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.running, payload={"to": "admin@example.com"}, claimed_by=worker.id, run_at=datetime.datetime.now(datetime.timezone.utc))
-            job_queue = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.queued, payload={"to": "billing@example.com"}, run_at=datetime.datetime.now(datetime.timezone.utc))
+            now = datetime.datetime.now(datetime.timezone.utc)
+            job_done = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.completed, payload={"to": "user@example.com"}, run_at=now, completed_at=now)
+            job_run = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.running, payload={"to": "admin@example.com"}, claimed_by=worker.id, run_at=now)
+            job_queue = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.queued, payload={"to": "billing@example.com"}, run_at=now)
             db.add_all([job_done, job_run, job_queue])
             await db.commit()
             await db.refresh(job_done)
+            await db.refresh(job_run)
+
+            from models import JobExecution
+            exec_done = JobExecution(job_id=job_done.id, worker_id=worker.id, status=JobStatus.completed, started_at=now - datetime.timedelta(seconds=5), finished_at=now, duration_ms=5000)
+            exec_run = JobExecution(job_id=job_run.id, worker_id=worker.id, status=JobStatus.running, started_at=now)
+            db.add_all([exec_done, exec_run])
+            await db.commit()
 
             # 7. Seed DLQ Entry
             dlq_job = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.dead, payload={"to": "invalid-email"}, attempt_count=5, max_attempts=5, run_at=datetime.datetime.now(datetime.timezone.utc))

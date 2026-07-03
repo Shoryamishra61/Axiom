@@ -273,8 +273,19 @@ export default function TourGuide() {
   const goNext = () => {
     if (idx === null) return;
     if (idx >= STEPS.length - 1) { finish(); return; }
+    
     const s = STEPS[idx];
-    if (s.navigateTo) navigate(s.navigateTo);
+    
+    // Auto-navigate into Job Explorer if clicking Next on step 4
+    if (idx === 4) {
+      const link = document.getElementById('tour-queue-link');
+      if (link && link.getAttribute('href')) {
+        navigate(link.getAttribute('href')!);
+      }
+    } else if (s.navigateTo) {
+      navigate(s.navigateTo);
+    }
+
     setIdx(idx + 1);
   };
 
