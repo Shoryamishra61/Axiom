@@ -59,66 +59,66 @@ const STEPS: TourStep[] = [
   // ── Job Explorer page (navigated by clicking a queue) ────
   {
     page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑤ Submit a Job',
+    elementId: 'tour-queue-link',
+    title: '⑤ Open Job Explorer',
     description:
-      'Once a queue exists, open it and hit "Submit Immediate Job". The worker will claim it using SELECT … FOR UPDATE SKIP LOCKED — zero double-processing.',
+      'Click the first queue link to open its Job Explorer. You can see all jobs, statuses, and retry counts.',
   },
   {
     page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑥ Watch Job Complete',
-    description:
-      'Jobs transition: queued → claimed → running → completed. The job explorer refreshes every second so you can watch the state machine live.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑦ Pause a Queue',
+    elementId: 'tour-pause-btn',
+    title: '⑥ Pause a Queue',
     description:
       'The Pause button stops workers from picking up NEW jobs. Jobs already running finish gracefully. Great for maintenance windows.',
   },
   {
     page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑧ Resume a Queue',
+    elementId: 'tour-pause-btn',
+    title: '⑦ Resume a Queue',
     description:
-      'Hit Resume and the queue drains normally. Workers start claiming jobs again immediately without any restart.',
+      'Hit Resume (same button) and the queue drains normally. Workers start claiming jobs again immediately without any restart.',
   },
   {
     page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑨ Submit a Failing Job',
-    description:
-      'Use "Submit Failing Job" to inject a job that will always error. You will see it retry with the configured backoff and eventually move to the Dead Letter Queue.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑩ Watch Retry Attempts',
-    description:
-      'Each retry increments the attempt counter. The scheduler computes next_run_at = now + backoff(attempt) so retries are always scheduled, never busy-looped.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑪ Open Execution Logs',
-    description:
-      'Click any job row to expand its execution log — full stack traces, timing, and attempt history. Invaluable for debugging worker failures.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '⑫ Dead Letter Queue',
+    elementId: 'tour-dlq-btn',
+    title: '⑧ Dead Letter Queue',
     description:
       'After max retries, jobs land in the DLQ. Click the "DLQ" button on a queue row to inspect them. No failed job is ever silently dropped.',
   },
   {
     page: '/queues',
-    elementId: 'tour-create-queue',
+    elementId: 'tour-project-select', // Fallback anchor
+    title: '⑨ Submit a Job',
+    description:
+      'Inside Job Explorer, you can hit "Submit Immediate Job". The worker will claim it using SELECT … FOR UPDATE SKIP LOCKED.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-project-select', // Fallback anchor
+    title: '⑩ Watch Job Complete',
+    description:
+      'Jobs transition: queued → claimed → running → completed. The job explorer refreshes every second so you can watch the state machine live.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-project-select', // Fallback anchor
+    title: '⑪ Submit a Failing Job',
+    description:
+      'Use "Submit Failing Job" to inject a job that will always error. You will see it retry with the configured backoff.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-project-select', // Fallback anchor
+    title: '⑫ Open Execution Logs',
+    description:
+      'Click any job row to expand its execution log — full stack traces, timing, and attempt history.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-project-select', // Fallback anchor
     title: '⑬ Retry a DLQ Job',
     description:
-      'From the DLQ, click Retry to re-enqueue a dead job after you have fixed the root cause. The attempt counter resets and it joins the normal queue.',
+      'From the DLQ, click Retry to re-enqueue a dead job after you have fixed the root cause.',
   },
   // ── Workers page ─────────────────────────────────────────
   {
@@ -179,7 +179,15 @@ export default function TourGuide() {
   // Navigate to step's page when step changes
   useEffect(() => {
     if (idx === null || !step || done()) return;
-    if (step.page !== location.pathname) navigate(step.page);
+    
+    // For exact match on dashboard
+    if (step.page === '/' && location.pathname !== '/') {
+      navigate('/');
+    } 
+    // For prefix match on /queues and /workers
+    else if (step.page !== '/' && !location.pathname.startsWith(step.page)) {
+      navigate(step.page);
+    }
   }, [idx]); // eslint-disable-line
 
   // Position popover on element
@@ -227,7 +235,9 @@ export default function TourGuide() {
   // Poll DOM every 100ms for up to 3s after step/page changes
   useEffect(() => {
     if (idx === null || !step || done()) { setVisible(false); return; }
-    if (step.page !== location.pathname) { setVisible(false); return; }
+    
+    const isCorrectPage = step.page === '/' ? location.pathname === '/' : location.pathname.startsWith(step.page);
+    if (!isCorrectPage) { setVisible(false); return; }
 
     if (retryTimer.current) clearInterval(retryTimer.current);
     setVisible(false);
