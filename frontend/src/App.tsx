@@ -3,7 +3,6 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store'
 import Layout from './components/Layout'
 import Toast from './components/Toast'
-import TourGuide from './components/TourGuide'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -21,8 +20,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toast />
-      <TourGuide />
-      <Suspense fallback={<div className="min-h-screen bg-surface" role="status" aria-label="Loading page" />}>
+      <Suspense fallback={<div className="min-h-screen bg-surface" role="status" aria-label="Loading page" />>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>

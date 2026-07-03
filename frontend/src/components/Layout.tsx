@@ -1,10 +1,12 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import TourGuide from './TourGuide'
 
 export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden">
+      <TourGuide />
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0">
         <TopBar />
