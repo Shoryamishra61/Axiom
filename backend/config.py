@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -13,6 +14,17 @@ class Settings(BaseSettings):
     reaper_interval_seconds: int = 15
     materializer_interval_seconds: int = 10
     cors_origins: str = "http://localhost,http://localhost:3000"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def fix_db_scheme(cls, v: str) -> str:
+        # Supabase and many cloud providers give plain postgresql:// URLs.
+        # SQLAlchemy asyncio requires postgresql+asyncpg:// — auto-correct here.
+        if v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        return v
 
     @property
     def cors_origin_list(self) -> list[str]:
