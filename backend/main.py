@@ -226,11 +226,117 @@ async def run_seed():
                      len(all_exec_jobs))
 
 
+async def backfill_throughput():
+    """Idempotent backfill: ensures the demo DB has enough JobExecution rows spread
+    across the last 12 hours so the throughput chart always shows solid bars.
+    Safe to run on every startup — skips if data already exists."""
+    from database import AsyncSessionLocal
+    from models import (
+        User, Organization, Project, Queue, Worker, WorkerStatus,
+        Job, JobStatus, JobType, JobExecution,
+    )
+    from sqlalchemy import select, func
+    import datetime, random
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.email == "shoryamishra61@gmail.com"))
+        user = result.scalar_one_or_none()
+        if not user:
+            return  # seed hasn't run yet; nothing to backfill
+
+        # Find the demo queue
+        q_result = await db.execute(
+            select(Queue)
+            .join(Project, Queue.project_id == Project.id)
+            .join(Organization, Project.org_id == Organization.id)
+            .where(Organization.owner_id == user.id, Queue.name == "email-deliveries")
+        )
+        queue = q_result.scalar_one_or_none()
+        if not queue:
+            return
+
+        # Count existing finished executions in the 12-hour window
+        now = datetime.datetime.now(datetime.timezone.utc)
+        chart_start = now.replace(minute=0, second=0, microsecond=0) - datetime.timedelta(hours=11)
+        count_result = await db.execute(
+            select(func.count()).select_from(JobExecution)
+            .join(Job, JobExecution.job_id == Job.id)
+            .where(
+                Job.queue_id == queue.id,
+                JobExecution.finished_at >= chart_start,
+                JobExecution.status.in_([JobStatus.completed, JobStatus.failed]),
+            )
+        )
+        existing = count_result.scalar() or 0
+        if existing >= 50:
+            log.info("Throughput backfill skipped: %d executions already present.", existing)
+            return
+
+        log.info("Throughput backfill: inserting hourly execution rows (currently %d).", existing)
+
+        # Find or create a worker row to attach executions to
+        w_result = await db.execute(select(Worker).where(Worker.hostname == "demo-worker-01"))
+        worker = w_result.scalar_one_or_none()
+        if not worker:
+            worker = Worker(hostname="demo-worker-01", pid=1024, status=WorkerStatus.active)
+            db.add(worker)
+            await db.commit()
+            await db.refresh(worker)
+
+        hourly_plan = [
+            (10, 1), (14, 2), (8, 0),  (18, 3),
+            (22, 1), (16, 2), (25, 4),  (30, 2),
+            (20, 3), (28, 1), (35, 5),  (12, 2),
+        ]
+
+        inserted = 0
+        for offset, (n_completed, n_failed) in enumerate(hourly_plan):
+            bucket_start = chart_start + datetime.timedelta(hours=offset)
+            for _ in range(n_completed):
+                started  = bucket_start + datetime.timedelta(minutes=random.randint(0, 50))
+                duration = random.randint(300, 8000)
+                finished = started + datetime.timedelta(milliseconds=duration)
+                j = Job(queue_id=queue.id, job_type=JobType.immediate,
+                        status=JobStatus.completed,
+                        payload={"backfill": True, "bucket": offset},
+                        run_at=started, completed_at=finished)
+                db.add(j)
+                await db.flush()
+                db.add(JobExecution(job_id=j.id, worker_id=worker.id,
+                                    status=JobStatus.completed,
+                                    started_at=started, finished_at=finished,
+                                    duration_ms=duration))
+                inserted += 1
+
+            for _ in range(n_failed):
+                started  = bucket_start + datetime.timedelta(minutes=random.randint(0, 50))
+                duration = random.randint(100, 3000)
+                finished = started + datetime.timedelta(milliseconds=duration)
+                j = Job(queue_id=queue.id, job_type=JobType.immediate,
+                        status=JobStatus.failed,
+                        payload={"backfill": True, "bucket": offset, "fail": True},
+                        run_at=started, attempt_count=3, max_attempts=3,
+                        completed_at=finished)
+                db.add(j)
+                await db.flush()
+                db.add(JobExecution(job_id=j.id, worker_id=worker.id,
+                                    status=JobStatus.failed,
+                                    started_at=started, finished_at=finished,
+                                    duration_ms=duration,
+                                    error_msg="Simulated error"))
+                inserted += 1
+
+        await db.commit()
+        log.info("Throughput backfill complete: inserted %d execution rows.", inserted)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await run_migrations()
     await run_seed()
+    await backfill_throughput()
     yield
+
 
 
 app = FastAPI(
