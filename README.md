@@ -2,6 +2,8 @@
 
 **Axiom** is a high-performance, fault-tolerant distributed job scheduling and monitoring platform. Engineered for robustness, strict consistency, and horizontal scalability, it serves as a foundation for executing asynchronous workloads with complex lifecycle requirements (immediate, delayed, scheduled, recurring cron, and batch execution).
 
+> **Note:** The Vercel deployment may show `silentkiller61` as the linked GitHub account in the deployment dashboard. This is a secondary GitHub account connected to the same Vercel profile and is unrelated to the source code. All source code is authored and maintained exclusively under [`Shoryamishra61`](https://github.com/Shoryamishra61).
+
 ---
 
 ## 1. Project Description
