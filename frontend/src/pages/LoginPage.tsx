@@ -8,7 +8,7 @@ export default function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const toast = useToastStore((s) => s.add)
   const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [form, setForm] = useState({ email: '', password: '', name: '' })
+  const [form, setForm] = useState({ email: 'shoryamishra61@gmail.com', password: 'password', name: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 

@@ -84,28 +84,30 @@ You can deploy Axiom publicly for free using a decoupled cloud architecture (Ver
 ### Step 1: Database (Supabase)
 1. Go to [Supabase](https://supabase.com) and create a free PostgreSQL database.
 2. Navigate to Project Settings -> Database -> Copy your **Connection String (URI)**.
+3. Make sure to append `?sslmode=require` if it's not already in the connection string.
 
 ### Step 2: Backend API & Workers (Render)
-1. Go to [Render.com](https://render.com) and create a new **Web Service**.
+1. Go to [Render.com](https://render.com) and click **New -> Web Service**.
 2. Connect this GitHub repository.
-3. Set the Root Directory to `backend/`.
-4. Build command: `pip install -r requirements.txt`
-5. Start command: `uvicorn main:app --host 0.0.0.0 --port 10000`
-6. Add an Environment Variable: `DATABASE_URL` = *(Your Supabase connection string)*.
-7. Deploy, and note the resulting API URL (e.g., `https://axiom-api.onrender.com`).
+3. **CRITICAL:** Set the **Root Directory** to `backend` (without the slash, just type `backend`).
+4. Set the **Language/Environment** to `Python` (Do NOT select Docker, as Render expects a single root Dockerfile by default).
+5. Set the **Build Command** to: `pip install -r requirements.txt`
+6. Set the **Start Command** to: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+7. Add an Environment Variable: `DATABASE_URL` = *(Your Supabase connection string)*.
+8. Deploy, and note the resulting API URL (e.g., `https://axiom-api.onrender.com`).
 
 ### Step 3: Frontend Dashboard (Vercel)
 1. Go to [Vercel](https://vercel.com) and click **Add New -> Project**.
 2. Import this GitHub repository.
-3. Set the Root Directory to `frontend/`.
-4. Under Environment Variables, add: `VITE_API_URL` = `https://axiom-api.onrender.com/api`
+3. **CRITICAL:** Set the **Root Directory** to `frontend`. Vercel will automatically detect React and Vite.
+4. Under Environment Variables, add: `VITE_API_URL` = `https://axiom-api.onrender.com/api` (Make sure to append `/api` to your Render URL).
 5. Click **Deploy**.
 
 *Within minutes, the Axiom dashboard will be publicly accessible worldwide!*
 
 ---
 
-## 7. Local Development
+## 7. Local Development & Demo
 
 To spin up the entire stack locally using Docker Compose:
 
@@ -117,4 +119,6 @@ docker compose up -d --build
 *   **Axiom Dashboard:** `http://localhost:3000`
 *   **REST API Swagger:** `http://localhost:8000/docs`
 
-*(Default demo login: `shoryamishra61@gmail.com` / `password`)*
+**Test Account Credentials (Pre-filled in UI):**
+*   **Email:** `shoryamishra61@gmail.com`
+*   **Password:** `password`
