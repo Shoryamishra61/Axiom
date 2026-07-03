@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-const TOUR_KEY = 'axiom_tour_v3_done';
+const TOUR_KEY = 'axiom_tour_v4_done';
+const ACCENT = '#007aff';
 
 interface Step {
   elementId: string;
   title: string;
   description: string;
-  page: string; // pathname this step lives on
-  navigateTo?: string; // where to go when Next is clicked from this step
+  page: string;
+  navigateTo?: string;
 }
 
 const STEPS: Step[] = [
@@ -16,70 +17,56 @@ const STEPS: Step[] = [
     page: '/',
     elementId: 'tour-dashboard',
     title: '👋 Welcome to Axiom',
-    description: 'This is your command center for the distributed job scheduler. The dashboard shows a live overview of all queues, jobs, and workers.',
+    description: 'Your command center for the distributed job scheduler. The dashboard shows a live overview of all queues, jobs, and workers.',
   },
   {
     page: '/',
     elementId: 'tour-nav-queues',
     title: '📋 Queues',
-    description: 'Click here to manage your job queues — create new ones, configure retry policies, pause or resume them.',
+    description: 'Manage your job queues here — create new ones, configure retry policies, or pause/resume them.',
     navigateTo: '/queues',
   },
   {
     page: '/queues',
     elementId: 'tour-create-queue',
     title: '➕ Create a Queue',
-    description: 'This button opens a form to create a new queue. You can set its name, max concurrency, and retry strategy (fixed, linear, or exponential backoff).',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-pause-btn',
-    title: '⏸ Pause a Queue',
-    description: 'The Pause button stops workers from picking up new jobs from this queue. Jobs that are currently running finish gracefully — no data is lost.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-dlq-btn',
-    title: '💀 Dead Letter Queue (DLQ)',
-    description: 'When a job exceeds its maximum retry attempts, it is automatically routed here. Click this button to inspect and manually requeue dead jobs.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-queue-link',
-    title: '🔍 Explore Queue Jobs',
-    description: 'Click on any queue name to open the Job Explorer — see all jobs, their statuses, retry counts, and execution logs.',
+    description: 'Click this to create a new queue. Set its name, max concurrency, and retry strategy (fixed, linear, or exponential backoff with jitter).',
   },
   {
     page: '/',
     elementId: 'tour-nav-workers',
     title: '⚙️ Worker Fleet',
-    description: 'Navigate here to monitor all active worker processes — their hostnames, process IDs, and last heartbeat timestamps.',
+    description: 'Monitor all active worker processes — their hostnames, process IDs, and last heartbeat timestamps.',
     navigateTo: '/workers',
   },
   {
     page: '/workers',
     elementId: 'tour-workers-table',
     title: '🖥 Worker Monitoring',
-    description: 'Each row is a live worker process. Workers poll the database using FOR UPDATE SKIP LOCKED — ensuring no two workers claim the same job. Tour complete! 🎉',
+    description: 'Each row is a live worker process. Workers poll PostgreSQL using FOR UPDATE SKIP LOCKED — no two workers ever claim the same job. Tour complete! 🎉',
   },
 ];
 
-function getPopoverPosition(rect: DOMRect, windowW: number, windowH: number) {
-  const margin = 12;
-  const popW = 320;
-  const popH = 160;
+function getPopoverPos(rect: DOMRect, wW: number, wH: number) {
+  const margin = 14;
+  const popW = 310;
+  const popH = 170;
+  let top: number;
+  let left: number;
 
-  // Try to place below, then above, then right, then left
-  if (rect.bottom + popH + margin < windowH) {
-    return { top: rect.bottom + margin, left: Math.min(Math.max(rect.left, margin), windowW - popW - margin) };
+  if (rect.bottom + popH + margin < wH) {
+    top = rect.bottom + margin;
+  } else if (rect.top - popH - margin > 0) {
+    top = rect.top - popH - margin;
+  } else {
+    top = margin;
   }
-  if (rect.top - popH - margin > 0) {
-    return { top: rect.top - popH - margin, left: Math.min(Math.max(rect.left, margin), windowW - popW - margin) };
-  }
-  if (rect.right + popW + margin < windowW) {
-    return { top: Math.max(rect.top, margin), left: rect.right + margin };
-  }
-  return { top: Math.max(rect.top, margin), left: Math.max(rect.left - popW - margin, margin) };
+
+  left = rect.left;
+  if (left + popW > wW - margin) left = wW - popW - margin;
+  if (left < margin) left = margin;
+
+  return { top, left };
 }
 
 export default function TourGuide() {
@@ -90,46 +77,29 @@ export default function TourGuide() {
   const [highlightStyle, setHighlightStyle] = useState<React.CSSProperties>({});
   const [visible, setVisible] = useState(false);
   const rafRef = useRef<number>(0);
+  const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Check if tour was already completed
   const isDone = () => !!localStorage.getItem(TOUR_KEY);
 
-  // Start tour on first visit
+  // Start on first visit
   useEffect(() => {
-    if (isDone()) return;
-    if (location.pathname === '/') {
-      setStepIndex(0);
-    }
+    if (!isDone()) setStepIndex(0);
   }, []);
 
-  const currentStep = stepIndex !== null ? STEPS[stepIndex] : null;
+  const step = stepIndex !== null ? STEPS[stepIndex] : null;
 
-  // Navigate to the correct page for this step
+  // Navigate to step's page
   useEffect(() => {
-    if (stepIndex === null || isDone()) return;
-    const step = STEPS[stepIndex];
-    if (step.page !== location.pathname) {
-      navigate(step.page);
-    }
+    if (stepIndex === null || !step || isDone()) return;
+    if (step.page !== location.pathname) navigate(step.page);
   }, [stepIndex]);
 
-  // Position the highlight and popover around the target element
-  const positionPopover = useCallback(() => {
-    if (!currentStep || currentStep.page !== location.pathname) {
-      setVisible(false);
-      return;
-    }
-    const el = document.getElementById(currentStep.elementId);
-    if (!el) {
-      setVisible(false);
-      return;
-    }
-
+  const positionOn = useCallback((el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     const wW = window.innerWidth;
     const wH = window.innerHeight;
-
     const pad = 6;
+
     setHighlightStyle({
       position: 'fixed',
       top: rect.top - pad,
@@ -137,61 +107,56 @@ export default function TourGuide() {
       width: rect.width + pad * 2,
       height: rect.height + pad * 2,
       borderRadius: 8,
-      boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
-      border: '2px solid #6366f1',
+      boxShadow: `0 0 0 9999px rgba(0,0,0,0.52), 0 0 0 3px ${ACCENT}`,
       pointerEvents: 'none',
       zIndex: 9998,
-      transition: 'all 0.25s ease',
+      transition: 'top .2s,left .2s,width .2s,height .2s',
     });
 
-    const pos = getPopoverPosition(rect, wW, wH);
+    const pos = getPopoverPos(rect, wW, wH);
     setPopoverStyle({
       position: 'fixed',
       top: pos.top,
       left: pos.left,
-      width: 320,
+      width: 310,
       zIndex: 9999,
-      transition: 'all 0.25s ease',
+      transition: 'top .2s,left .2s',
     });
     setVisible(true);
-  }, [currentStep, location.pathname]);
+  }, []);
 
-  // Re-position on every animation frame so it tracks dynamic content
+  // Retry finding element for 3s after each step/navigation change
   useEffect(() => {
-    if (stepIndex === null || isDone()) return;
+    if (stepIndex === null || !step || isDone()) { setVisible(false); return; }
+    if (step.page !== location.pathname) { setVisible(false); return; }
 
+    if (retryRef.current) clearInterval(retryRef.current);
+    setVisible(false);
     let attempts = 0;
-    const tryPosition = () => {
-      positionPopover();
-      attempts++;
-      if (!visible && attempts < 40) {
-        rafRef.current = requestAnimationFrame(tryPosition);
+
+    retryRef.current = setInterval(() => {
+      const el = document.getElementById(step.elementId);
+      if (el) {
+        clearInterval(retryRef.current!);
+        positionOn(el);
       }
-    };
-    rafRef.current = requestAnimationFrame(tryPosition);
-
-    window.addEventListener('resize', positionPopover);
-    window.addEventListener('scroll', positionPopover, true);
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      window.removeEventListener('resize', positionPopover);
-      window.removeEventListener('scroll', positionPopover, true);
-    };
-  }, [stepIndex, positionPopover, location.pathname]);
-
-  // Retry finding element for up to 3 seconds after navigation
-  useEffect(() => {
-    if (stepIndex === null || !currentStep || isDone()) return;
-    if (currentStep.page !== location.pathname) return;
-
-    let attempts = 0;
-    const interval = setInterval(() => {
-      const el = document.getElementById(currentStep.elementId);
-      if (el) { positionPopover(); clearInterval(interval); }
-      if (++attempts > 30) clearInterval(interval);
+      if (++attempts > 30) clearInterval(retryRef.current!);
     }, 100);
-    return () => clearInterval(interval);
-  }, [stepIndex, location.pathname]);
+
+    return () => { if (retryRef.current) clearInterval(retryRef.current); };
+  }, [stepIndex, location.pathname, positionOn]);
+
+  // Live-track position
+  useEffect(() => {
+    if (!visible || !step) return;
+    const track = () => {
+      const el = document.getElementById(step.elementId);
+      if (el) positionOn(el);
+      rafRef.current = requestAnimationFrame(track);
+    };
+    rafRef.current = requestAnimationFrame(track);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [visible, step, positionOn]);
 
   const finish = () => {
     localStorage.setItem(TOUR_KEY, 'true');
@@ -199,78 +164,70 @@ export default function TourGuide() {
     setVisible(false);
   };
 
-  const handleNext = () => {
+  const goNext = () => {
     if (stepIndex === null) return;
-    const step = STEPS[stepIndex];
-    if (stepIndex >= STEPS.length - 1) {
-      finish();
-      return;
-    }
-    if (step.navigateTo) {
-      navigate(step.navigateTo);
-    }
+    if (stepIndex >= STEPS.length - 1) { finish(); return; }
+    const s = STEPS[stepIndex];
+    if (s.navigateTo) navigate(s.navigateTo);
     setStepIndex(stepIndex + 1);
   };
 
-  const handlePrev = () => {
-    if (stepIndex === null || stepIndex === 0) return;
-    const prevStep = STEPS[stepIndex - 1];
-    if (prevStep.page !== location.pathname) {
-      navigate(prevStep.page);
-    }
+  const goPrev = () => {
+    if (!stepIndex) return;
+    const prev = STEPS[stepIndex - 1];
+    if (prev.page !== location.pathname) navigate(prev.page);
     setStepIndex(stepIndex - 1);
   };
 
-  const handleSkip = () => {
-    if (confirm('Skip the tour? You can restart it by clearing your browser\'s local storage.')) {
-      finish();
-    }
+  const skip = () => {
+    if (window.confirm('Skip the tour?')) finish();
   };
 
-  if (stepIndex === null || !visible || !currentStep || isDone()) return null;
+  if (!visible || !step || stepIndex === null) return null;
+
+  const isLast = stepIndex === STEPS.length - 1;
 
   return (
     <>
-      {/* Overlay cutout highlight */}
       <div style={highlightStyle} />
-
-      {/* Popover */}
       <div style={popoverStyle}>
         <div style={{
           background: '#fff',
           borderRadius: 10,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-          padding: '18px 20px 14px',
-          fontFamily: 'system-ui, sans-serif',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.18)',
+          padding: '16px 18px 13px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         }}>
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <span style={{ fontWeight: 700, fontSize: 15, color: '#111', lineHeight: 1.3 }}>
-              {currentStep.title}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 14.5, color: '#1d1d1f', lineHeight: 1.35 }}>
+              {step.title}
             </span>
-            <button onClick={handleSkip} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: 18, lineHeight: 1, padding: '0 0 0 8px' }}>×</button>
+            <button onClick={skip} title="Skip tour" style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#86868b', fontSize: 20, lineHeight: 1, padding: '0 0 0 10px', marginTop: -2,
+            }}>×</button>
           </div>
 
-          {/* Description */}
-          <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#444', lineHeight: 1.5 }}>
-            {currentStep.description}
+          <p style={{ margin: '0 0 13px', fontSize: 13, color: '#444', lineHeight: 1.55 }}>
+            {step.description}
           </p>
 
-          {/* Footer */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 12, color: '#999' }}>{stepIndex + 1} of {STEPS.length}</span>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ fontSize: 11.5, color: '#86868b' }}>{stepIndex + 1} / {STEPS.length}</span>
+            <div style={{ display: 'flex', gap: 6 }}>
               {stepIndex > 0 && (
-                <button onClick={handlePrev} style={{
-                  padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd',
-                  background: '#f5f5f5', cursor: 'pointer', fontSize: 13, color: '#555'
-                }}>← Prev</button>
+                <button onClick={goPrev} style={{
+                  padding: '4px 11px', borderRadius: 6,
+                  border: '1px solid #d2d2d7', background: '#f5f5f7',
+                  cursor: 'pointer', fontSize: 12.5, color: '#1d1d1f',
+                }}>← Back</button>
               )}
-              <button onClick={handleNext} style={{
-                padding: '5px 14px', borderRadius: 6, border: 'none',
-                background: '#6366f1', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600
+              <button onClick={goNext} style={{
+                padding: '4px 14px', borderRadius: 6,
+                border: 'none', background: ACCENT, color: '#fff',
+                cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
               }}>
-                {stepIndex >= STEPS.length - 1 ? 'Finish ✓' : 'Next →'}
+                {isLast ? 'Done ✓' : 'Next →'}
               </button>
             </div>
           </div>
