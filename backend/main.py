@@ -52,17 +52,84 @@ async def run_migrations():
 
 
 async def run_seed():
-    """Seed the default test user if it doesn't exist."""
+    """Seed the default test user and realistic demo data if it doesn't exist."""
     from auth import hash_password
     from database import AsyncSessionLocal
-    from models import User
+    from models import (
+        User, Organization, Project, Queue, RetryPolicy, RetryStrategy,
+        Worker, WorkerStatus, WorkerHeartbeat, Job, JobStatus, JobType,
+        DeadLetterEntry
+    )
     from sqlalchemy import select
+    import uuid
+    import datetime
+
     async with AsyncSessionLocal() as db:
-        exists = await db.execute(select(User).where(User.email == "shoryamishra61@gmail.com"))
-        if not exists.scalar_one_or_none():
-            db.add(User(email="shoryamishra61@gmail.com", name="Shorya Mishra", password_hash=hash_password("password")))
+        # 1. Seed User
+        result = await db.execute(select(User).where(User.email == "shoryamishra61@gmail.com"))
+        user = result.scalar_one_or_none()
+        if not user:
+            user = User(email="shoryamishra61@gmail.com", name="Shorya Mishra", password_hash=hash_password("password"))
+            db.add(user)
             await db.commit()
+            await db.refresh(user)
             log.info("Test user seeded.")
+        
+        # 2. Seed Organization & Project
+        result = await db.execute(select(Organization).where(Organization.owner_id == user.id))
+        org = result.scalar_one_or_none()
+        if not org:
+            org = Organization(name="Axiom Demo Corp", owner_id=user.id)
+            db.add(org)
+            await db.commit()
+            await db.refresh(org)
+            
+            proj = Project(name="Production Workloads", org_id=org.id)
+            db.add(proj)
+            await db.commit()
+            await db.refresh(proj)
+            
+            # 3. Seed Retry Policies
+            policy1 = RetryPolicy(strategy=RetryStrategy.exponential, max_attempts=5, base_delay_ms=1000, max_delay_ms=60000)
+            db.add(policy1)
+            await db.commit()
+            await db.refresh(policy1)
+
+            # 4. Seed Queues
+            q1 = Queue(project_id=proj.id, name="email-deliveries", concurrency_limit=20, retry_policy_id=policy1.id)
+            q2 = Queue(project_id=proj.id, name="video-encoding", concurrency_limit=5, retry_policy_id=policy1.id)
+            db.add_all([q1, q2])
+            await db.commit()
+            await db.refresh(q1)
+
+            # 5. Seed Worker
+            worker = Worker(hostname="demo-worker-01", pid=1024, status=WorkerStatus.active)
+            db.add(worker)
+            await db.commit()
+            await db.refresh(worker)
+
+            hb = WorkerHeartbeat(worker_id=worker.id, active_jobs=3)
+            db.add(hb)
+
+            # 6. Seed Jobs
+            job_done = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.completed, payload={"to": "user@example.com"}, run_at=datetime.datetime.now(datetime.timezone.utc))
+            job_run = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.running, payload={"to": "admin@example.com"}, claimed_by=worker.id, run_at=datetime.datetime.now(datetime.timezone.utc))
+            job_queue = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.queued, payload={"to": "billing@example.com"}, run_at=datetime.datetime.now(datetime.timezone.utc))
+            db.add_all([job_done, job_run, job_queue])
+            await db.commit()
+            await db.refresh(job_done)
+
+            # 7. Seed DLQ Entry
+            dlq_job = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.dead, payload={"to": "invalid-email"}, attempt_count=5, max_attempts=5, run_at=datetime.datetime.now(datetime.timezone.utc))
+            db.add(dlq_job)
+            await db.commit()
+            await db.refresh(dlq_job)
+            
+            dlq_entry = DeadLetterEntry(job_id=dlq_job.id, queue_id=q1.id, payload=dlq_job.payload, failure_reason="SMTP Connect Error", attempt_count=5, first_failed_at=datetime.datetime.now(datetime.timezone.utc))
+            db.add(dlq_entry)
+            await db.commit()
+
+            log.info("Realistic demo data seeded.")
 
 
 @asynccontextmanager
