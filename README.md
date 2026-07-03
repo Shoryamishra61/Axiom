@@ -19,6 +19,44 @@ The platform is divided into three primary components:
 
 ## 2. Architecture & System Design
 
+```mermaid
+flowchart TB
+    %% Styling
+    classDef client fill:#007aff,stroke:#005bb5,stroke-width:2px,color:#fff,rx:8px
+    classDef api fill:#2c2c2e,stroke:#3a3a3c,stroke-width:2px,color:#fff,rx:8px
+    classDef db fill:#3fb950,stroke:#2ea043,stroke-width:2px,color:#fff,rx:8px
+    classDef worker fill:#f85149,stroke:#da3633,stroke-width:2px,color:#fff,rx:8px
+    classDef background fill:#1d1d1f,stroke:#3a3a3c,stroke-width:1px,stroke-dasharray: 5 5,color:#8b949e,rx:12px
+
+    %% Components
+    UI["💻 Axiom Dashboard<br/>(React / Vite)"]:::client
+    API["⚡ REST API Node<br/>(FastAPI / Uvicorn)"]:::api
+    DB[("🐘 PostgreSQL Engine<br/>(Supabase / State & Logs)")]:::db
+
+    subgraph Cluster["Worker Fleet (Horizontally Scalable)"]
+        direction TB
+        W1["⚙️ Worker Node 1"]:::worker
+        W2["⚙️ Worker Node 2"]:::worker
+        W3["⚙️ Worker Node N"]:::worker
+    end
+    class Cluster background
+
+    subgraph Internal["Internal Processes"]
+        direction LR
+        Cron["⏱️ Cron Materializer"]:::api
+        Reap["💀 Dead Worker Reaper"]:::api
+    end
+    class Internal background
+
+    %% Relationships
+    UI -- "REST (JSON)" --> API
+    API -- "Async SQLAlchemy" --> DB
+    W1 -. "SELECT ... SKIP LOCKED" .-> DB
+    W2 -. "SELECT ... SKIP LOCKED" .-> DB
+    W3 -. "SELECT ... SKIP LOCKED" .-> DB
+    Internal -- "Background Tasks" --> API
+```
+
 ### 2.1 Component Architecture
 Axiom operates on a decoupled, stateless microservice paradigm.
 
