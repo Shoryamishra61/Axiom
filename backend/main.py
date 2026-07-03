@@ -1,6 +1,9 @@
 import logging
+import pathlib
 import time
+from contextlib import asynccontextmanager
 
+import asyncpg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
@@ -19,11 +22,62 @@ from config import settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("api")
 
+MIGRATIONS_DIR = pathlib.Path(__file__).parent / "migrations"
+
+
+async def run_migrations():
+    """Run all SQL migrations on startup. Safe to run multiple times."""
+    db_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+    try:
+        conn = await asyncpg.connect(db_url)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS _migrations (
+                filename TEXT PRIMARY KEY,
+                applied_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
+        for mf in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            already = await conn.fetchval("SELECT 1 FROM _migrations WHERE filename=$1", mf.name)
+            if already:
+                log.info("Migration already applied: %s", mf.name)
+                continue
+            log.info("Applying migration: %s", mf.name)
+            await conn.execute(mf.read_text(encoding="utf-8"))
+            await conn.execute("INSERT INTO _migrations(filename) VALUES($1)", mf.name)
+            log.info("Migration applied: %s", mf.name)
+        await conn.close()
+        log.info("All migrations complete.")
+    except Exception as e:
+        log.error("Migration error (non-fatal): %s", e)
+
+
+async def run_seed():
+    """Seed the default test user if it doesn't exist."""
+    from auth import hash_password
+    from database import AsyncSessionLocal
+    from models import User
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as db:
+        exists = await db.execute(select(User).where(User.email == "shoryamishra61@gmail.com"))
+        if not exists.scalar_one_or_none():
+            db.add(User(email="shoryamishra61@gmail.com", name="Shorya Mishra", password_hash=hash_password("password")))
+            await db.commit()
+            log.info("Test user seeded.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await run_migrations()
+    await run_seed()
+    yield
+
+
 app = FastAPI(
     title="Distributed Job Scheduler",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
