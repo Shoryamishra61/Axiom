@@ -13,13 +13,15 @@ export default function WorkersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-lg font-semibold">Worker Fleet</h1>
+      <h1 id="tour-workers-section" className="text-lg font-semibold">Worker Fleet</h1>
 
       {isLoading && <SkeletonTable cols={5} rows={4} />}
       {isError && <EmptyState title="Could not load workers" description="Check the API connection and try again." />}
 
       {!isLoading && workers.length === 0 && (
-        <EmptyState title="No workers registered" description="Start a worker process to see it here." />
+        <div id="tour-workers-empty">
+          <EmptyState title="No workers registered" description="Start a worker process to see it here." />
+        </div>
       )}
 
       {workers.length > 0 && (
