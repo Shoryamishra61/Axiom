@@ -20,7 +20,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toast />
-      <Suspense fallback={<div className="min-h-screen bg-surface" role="status" aria-label="Loading page" />>
+      <Suspense fallback={<div className="min-h-screen bg-surface" role="status" aria-label="Loading page" />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>
