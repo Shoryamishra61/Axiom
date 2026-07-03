@@ -29,104 +29,85 @@ const STEPS: TourStep[] = [
   {
     page: '/',
     elementId: 'tour-dashboard',
-    title: '① Open Dashboard',
-    description:
-      'This is the main command center. You can see live system metrics — total jobs queued, running, completed, and failed — refreshed every few seconds.',
+    title: 'Open Dashboard',
+    description: 'This is the main command center. You can see live system metrics: total jobs queued, running, completed, and failed, refreshed every few seconds.',
   },
   // ── Queues page ──────────────────────────────────────────
   {
     page: '/',
     elementId: 'tour-nav-queues',
-    title: '② Navigate to Queues',
-    description:
-      'All job queues are managed here. Click "Next" and we will take you to the Queues page.',
+    title: 'Navigate to Queues',
+    description: 'All job queues are managed here. Click Next and we will take you to the Queues page.',
     navigateTo: '/queues',
   },
   {
     page: '/queues',
     elementId: 'tour-create-queue',
-    title: '③ Create a Queue',
-    description:
-      'Click "+ New Queue" to create a queue. Give it a name and choose a retry strategy — Fixed, Linear, or Exponential backoff with jitter.',
+    title: 'Create a Queue',
+    description: 'Click "+ New Queue" to create a queue. Give it a name and choose a retry strategy: Fixed, Linear, or Exponential backoff with jitter.',
   },
   {
     page: '/queues',
-    elementId: 'tour-create-queue',
-    title: '④ Configure Retry Policy',
-    description:
-      'Inside the queue form you set max retry attempts and the backoff strategy. Exponential backoff prevents thundering-herd failures during outages.',
+    elementId: 'tour-pause-btn',
+    title: 'Pause a Queue',
+    description: 'The Pause button stops workers from picking up NEW jobs. Jobs already running finish gracefully. Great for maintenance windows.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-pause-btn',
+    title: 'Resume a Queue',
+    description: 'Hit Resume (same button) and the queue drains normally. Workers start claiming jobs again immediately without any restart.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-queue-link',
+    title: 'Open Job Explorer',
+    description: 'Click the first queue link to open its Job Explorer. You can see all jobs, statuses, and retry counts.',
   },
   // ── Job Explorer page (navigated by clicking a queue) ────
   {
     page: '/queues',
-    elementId: 'tour-queue-link',
-    title: '⑤ Open Job Explorer',
-    description:
-      'Click the first queue link to open its Job Explorer. You can see all jobs, statuses, and retry counts.',
+    elementId: 'tour-submit-success',
+    title: 'Submit a Job',
+    description: 'Inside Job Explorer, hit "Submit Success Job". The worker will claim it using SELECT ... FOR UPDATE SKIP LOCKED.',
   },
   {
     page: '/queues',
-    elementId: 'tour-pause-btn',
-    title: '⑥ Pause a Queue',
-    description:
-      'The Pause button stops workers from picking up NEW jobs. Jobs already running finish gracefully. Great for maintenance windows.',
+    elementId: 'tour-job-row',
+    title: 'Watch Job Complete',
+    description: 'Jobs transition: queued to claimed to running to completed. The job explorer refreshes every second so you can watch the state machine live.',
   },
   {
     page: '/queues',
-    elementId: 'tour-pause-btn',
-    title: '⑦ Resume a Queue',
-    description:
-      'Hit Resume (same button) and the queue drains normally. Workers start claiming jobs again immediately without any restart.',
+    elementId: 'tour-submit-failing',
+    title: 'Submit a Failing Job',
+    description: 'Use "Submit Failing Job" to inject a job that will always error. You will see it retry with the configured backoff.',
+  },
+  {
+    page: '/queues',
+    elementId: 'tour-job-row',
+    title: 'Open Execution Logs',
+    description: 'Click any job row to expand its execution log to see full stack traces, timing, and attempt history.',
   },
   {
     page: '/queues',
     elementId: 'tour-dlq-btn',
-    title: '⑧ Dead Letter Queue',
-    description:
-      'After max retries, jobs land in the DLQ. Click the "DLQ" button on a queue row to inspect them. No failed job is ever silently dropped.',
+    title: 'Dead Letter Queue',
+    description: 'After max retries, jobs land in the DLQ. Click "View DLQ" to inspect them. No failed job is ever silently dropped.',
   },
+  // ── DLQ page ────
   {
     page: '/queues',
-    elementId: 'tour-project-select', // Fallback anchor
-    title: '⑨ Submit a Job',
-    description:
-      'Inside Job Explorer, you can hit "Submit Immediate Job". The worker will claim it using SELECT … FOR UPDATE SKIP LOCKED.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-project-select', // Fallback anchor
-    title: '⑩ Watch Job Complete',
-    description:
-      'Jobs transition: queued → claimed → running → completed. The job explorer refreshes every second so you can watch the state machine live.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-project-select', // Fallback anchor
-    title: '⑪ Submit a Failing Job',
-    description:
-      'Use "Submit Failing Job" to inject a job that will always error. You will see it retry with the configured backoff.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-project-select', // Fallback anchor
-    title: '⑫ Open Execution Logs',
-    description:
-      'Click any job row to expand its execution log — full stack traces, timing, and attempt history.',
-  },
-  {
-    page: '/queues',
-    elementId: 'tour-project-select', // Fallback anchor
-    title: '⑬ Retry a DLQ Job',
-    description:
-      'From the DLQ, click Retry to re-enqueue a dead job after you have fixed the root cause.',
+    elementId: 'tour-dlq-retry',
+    title: 'Retry a DLQ Job',
+    description: 'From the DLQ, click Retry to re-enqueue a dead job after you have fixed the root cause.',
   },
   // ── Workers page ─────────────────────────────────────────
   {
     page: '/queues',
     elementId: 'tour-nav-workers',
-    title: '⑭ Open Worker Monitoring',
-    description:
-      'The Worker Fleet page shows every active worker: hostname, PID, active job count, and last heartbeat. Stale workers are reaped automatically. Tour complete! 🎉',
+    title: 'Open Worker Monitoring',
+    description: 'The Worker Fleet page shows every active worker: hostname, PID, active job count, and last heartbeat. Stale workers are reaped automatically. Tour complete! 🎉',
     navigateTo: '/workers',
   },
 ];
@@ -276,13 +257,21 @@ export default function TourGuide() {
     
     const s = STEPS[idx];
     
-    // Auto-navigate into Job Explorer if clicking Next on step 4
-    if (idx === 4) {
+    // Auto-navigate into Job Explorer if clicking Next on step 5
+    if (idx === 5) {
       const link = document.getElementById('tour-queue-link');
       if (link && link.getAttribute('href')) {
         navigate(link.getAttribute('href')!);
       }
-    } else if (s.navigateTo) {
+    } 
+    // Auto-navigate into DLQ if clicking Next on step 10
+    else if (idx === 10) {
+      const link = document.getElementById('tour-dlq-btn');
+      if (link && link.getAttribute('href')) {
+        navigate(link.getAttribute('href')!);
+      }
+    }
+    else if (s.navigateTo) {
       navigate(s.navigateTo);
     }
 
