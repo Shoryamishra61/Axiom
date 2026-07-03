@@ -29,7 +29,7 @@ async def run_migrations():
     """Run all SQL migrations on startup. Safe to run multiple times."""
     db_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
     try:
-        conn = await asyncpg.connect(db_url)
+        conn = await asyncpg.connect(db_url, statement_cache_size=0)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS _migrations (
                 filename TEXT PRIMARY KEY,
