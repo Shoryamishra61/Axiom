@@ -102,42 +102,128 @@ async def run_seed():
             await db.commit()
             await db.refresh(q1)
 
-            # 5. Seed Worker
+            # 5. Seed Workers
             worker = Worker(hostname="demo-worker-01", pid=1024, status=WorkerStatus.active)
-            db.add(worker)
+            worker2 = Worker(hostname="demo-worker-02", pid=1025, status=WorkerStatus.active)
+            db.add_all([worker, worker2])
             await db.commit()
             await db.refresh(worker)
+            await db.refresh(worker2)
 
-            hb = WorkerHeartbeat(worker_id=worker.id, active_jobs=3)
-            db.add(hb)
+            db.add_all([
+                WorkerHeartbeat(worker_id=worker.id, active_jobs=4),
+                WorkerHeartbeat(worker_id=worker2.id, active_jobs=2),
+            ])
 
-            # 6. Seed Jobs
-            now = datetime.datetime.now(datetime.timezone.utc)
-            job_done = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.completed, payload={"to": "user@example.com"}, run_at=now, completed_at=now)
-            job_run = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.running, payload={"to": "admin@example.com"}, claimed_by=worker.id, run_at=now)
-            job_queue = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.queued, payload={"to": "billing@example.com"}, run_at=now)
-            db.add_all([job_done, job_run, job_queue])
-            await db.commit()
-            await db.refresh(job_done)
-            await db.refresh(job_run)
-
+            # 6. Seed Jobs + spread JobExecution rows across all 12 hourly buckets
+            #    so the throughput chart has solid bars from hour 0 to hour 11.
             from models import JobExecution
-            exec_done = JobExecution(job_id=job_done.id, worker_id=worker.id, status=JobStatus.completed, started_at=now - datetime.timedelta(seconds=5), finished_at=now, duration_ms=5000)
-            exec_run = JobExecution(job_id=job_run.id, worker_id=worker.id, status=JobStatus.running, started_at=now)
-            db.add_all([exec_done, exec_run])
+            import random
+
+            now = datetime.datetime.now(datetime.timezone.utc)
+            # Truncate to the current hour, then go back 11 hours
+            chart_start = now.replace(minute=0, second=0, microsecond=0) - datetime.timedelta(hours=11)
+
+            # Realistic completed/failed counts per hour bucket
+            hourly_plan = [
+                (10, 1), (14, 2), (8, 0),  (18, 3),
+                (22, 1), (16, 2), (25, 4),  (30, 2),
+                (20, 3), (28, 1), (35, 5),  (12, 2),
+            ]
+
+            all_exec_jobs = []
+            executions = []
+            for offset, (n_completed, n_failed) in enumerate(hourly_plan):
+                bucket_start = chart_start + datetime.timedelta(hours=offset)
+                bucket_end   = bucket_start + datetime.timedelta(minutes=55)
+
+                for i in range(n_completed):
+                    started = bucket_start + datetime.timedelta(minutes=random.randint(0, 50))
+                    duration = random.randint(300, 8000)
+                    finished = started + datetime.timedelta(milliseconds=duration)
+                    j = Job(
+                        queue_id=q1.id,
+                        job_type=JobType.immediate,
+                        status=JobStatus.completed,
+                        payload={"task": f"email-{offset}-{i}", "to": f"user{i}@example.com"},
+                        run_at=started,
+                        completed_at=finished,
+                    )
+                    all_exec_jobs.append((j, JobStatus.completed, started, finished, duration))
+
+                for i in range(n_failed):
+                    started = bucket_start + datetime.timedelta(minutes=random.randint(0, 50))
+                    duration = random.randint(100, 3000)
+                    finished = started + datetime.timedelta(milliseconds=duration)
+                    j = Job(
+                        queue_id=q1.id,
+                        job_type=JobType.immediate,
+                        status=JobStatus.failed,
+                        payload={"task": f"fail-{offset}-{i}"},
+                        run_at=started,
+                        attempt_count=3,
+                        max_attempts=3,
+                        completed_at=finished,
+                    )
+                    all_exec_jobs.append((j, JobStatus.failed, started, finished, duration))
+
+            # Also add a few live jobs visible in the dashboard stat cards
+            job_run   = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.running,
+                            payload={"to": "admin@example.com"}, claimed_by=worker.id, run_at=now)
+            job_run2  = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.running,
+                            payload={"to": "ops@example.com"}, claimed_by=worker2.id, run_at=now)
+            job_q1    = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.queued,
+                            payload={"to": "billing@example.com"}, run_at=now)
+            job_q2    = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.queued,
+                            payload={"to": "support@example.com"}, run_at=now)
+            job_q3    = Job(queue_id=q2.id, job_type=JobType.delayed,  status=JobStatus.scheduled,
+                            payload={"video": "promo-reel.mp4"}, run_at=now + datetime.timedelta(minutes=30))
+
+            db.add_all([job_run, job_run2, job_q1, job_q2, job_q3])
+            # Add all throughput jobs
+            for job, *_ in all_exec_jobs:
+                db.add(job)
+            await db.commit()
+            await db.refresh(job_run)
+            await db.refresh(job_run2)
+            for item in all_exec_jobs:
+                await db.refresh(item[0])
+
+            # Create execution records (these are what the /metrics query reads)
+            exec_run  = JobExecution(job_id=job_run.id,  worker_id=worker.id,  status=JobStatus.running, started_at=now - datetime.timedelta(seconds=12))
+            exec_run2 = JobExecution(job_id=job_run2.id, worker_id=worker2.id, status=JobStatus.running, started_at=now - datetime.timedelta(seconds=7))
+            db.add_all([exec_run, exec_run2])
+
+            for job, status, started, finished, duration in all_exec_jobs:
+                db.add(JobExecution(
+                    job_id=job.id,
+                    worker_id=worker.id if random.random() > 0.4 else worker2.id,
+                    status=status,
+                    started_at=started,
+                    finished_at=finished,
+                    duration_ms=duration,
+                    error_msg="Simulated error" if status == JobStatus.failed else None,
+                ))
             await db.commit()
 
             # 7. Seed DLQ Entry
-            dlq_job = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.dead, payload={"to": "invalid-email"}, attempt_count=5, max_attempts=5, run_at=datetime.datetime.now(datetime.timezone.utc))
+            dlq_job = Job(queue_id=q1.id, job_type=JobType.immediate, status=JobStatus.dead,
+                          payload={"to": "invalid-email"}, attempt_count=5, max_attempts=5,
+                          run_at=now)
             db.add(dlq_job)
             await db.commit()
             await db.refresh(dlq_job)
-            
-            dlq_entry = DeadLetterEntry(job_id=dlq_job.id, queue_id=q1.id, payload=dlq_job.payload, failure_reason="SMTP Connect Error", attempt_count=5, first_failed_at=datetime.datetime.now(datetime.timezone.utc))
+
+            dlq_entry = DeadLetterEntry(
+                job_id=dlq_job.id, queue_id=q1.id, payload=dlq_job.payload,
+                failure_reason="SMTP Connect Error: connection refused after 5 retries",
+                attempt_count=5, first_failed_at=now,
+            )
             db.add(dlq_entry)
             await db.commit()
 
-            log.info("Realistic demo data seeded.")
+            log.info("Realistic demo data seeded: %d throughput execution rows across 12 hours.",
+                     len(all_exec_jobs))
 
 
 @asynccontextmanager
